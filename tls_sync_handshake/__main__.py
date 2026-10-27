@@ -7,6 +7,7 @@ import threading
 from .client import TLSClient
 from .server import TLSServer
 from .session_cache import SessionCache
+from .webapp import create_web_server
 
 
 def _client_command(args: argparse.Namespace) -> int:
@@ -47,6 +48,19 @@ def _demo_command(args: argparse.Namespace) -> int:
         server.close()
 
 
+def _web_command(args: argparse.Namespace) -> int:
+    server = create_web_server(args.cert, args.key, args.cafile, args.host, args.port)
+    address = server.server_address
+    print(f"TLS handshake demo available at http://{address[0]}:{address[1]}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping demo app")
+    finally:
+        server.server_close()
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tls-sync-handshake",
@@ -73,6 +87,14 @@ def _parser() -> argparse.ArgumentParser:
     demo.add_argument("--key", required=True, help="server private key PEM file")
     demo.add_argument("--cafile", required=True, help="trusted CA/certificate PEM file")
     demo.set_defaults(handler=_demo_command)
+
+    web = commands.add_parser("web", help="run the interactive browser demo app")
+    web.add_argument("--cert", required=True, help="server certificate PEM file")
+    web.add_argument("--key", required=True, help="server private key PEM file")
+    web.add_argument("--cafile", required=True, help="trusted CA/certificate PEM file")
+    web.add_argument("--host", default="127.0.0.1", help="local web UI bind address")
+    web.add_argument("--port", type=int, default=8000, help="local web UI port")
+    web.set_defaults(handler=_web_command)
     return parser
 
 

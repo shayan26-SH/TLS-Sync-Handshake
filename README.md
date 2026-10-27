@@ -45,7 +45,22 @@ python -m tls_sync_handshake demo `
   --cafile dev-certs\localhost-cert.pem
 ```
 
-The demo makes two connections. It should report a full handshake on the first and a resumed handshake on the second when the platform's OpenSSL build issues and accepts a session ticket. The client prints whether it cached a ticket and whether the second connection actually resumed; resumption is never reported as successful unless OpenSSL confirms it.
+The CLI demo makes two connections. It should report a full handshake on the first and a resumed handshake on the second when the platform's OpenSSL build issues and accepts a session ticket. The client prints whether it cached a ticket and whether the second connection actually resumed; resumption is never reported as successful unless OpenSSL confirms it.
+
+## Run the browser demo app
+
+Start the local interactive UI:
+
+```powershell
+python -m tls_sync_handshake web `
+  --cert dev-certs\localhost-cert.pem `
+  --key dev-certs\localhost-key.pem `
+  --cafile dev-certs\localhost-cert.pem
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Use **Connect** for a single echo request, **Run full demo** to make a full handshake followed by a resumption attempt, and **Clear session ticket** to force the next connection to start without the cached client ticket. The app binds to loopback only, keeps the client ticket in process memory, and shuts down with `Ctrl+C`.
+
+The lifecycle panel displays the handshake as a high-level overview. Python/OpenSSL does not expose a packet-by-packet TLS handshake trace through this demo, so the interface does not claim to inspect individual TLS handshake messages.
 
 ## Run server and client separately
 
@@ -96,6 +111,9 @@ tls_sync_handshake/
   protocol.py        Bounded demo message framing
   server.py          Sequential TLS 1.3 echo server
   session_cache.py   Process-local opaque SSLSession cache
+  webapp.py          Loopback-only browser UI API and web server
+  static/
+    index.html       Interactive TLS handshake demo interface
 scripts/
   generate_dev_cert.py
 tests/

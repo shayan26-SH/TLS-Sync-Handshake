@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b1017">
+    <title>TLS Lab — Session Handshake</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1017;
+        --panel: #111923;
+        --panel-raised: #151f2b;
+        --border: #263341;
+        --text: #e8edf2;
+        --muted: #8d9bab;
+        --green: #64e6b1;
+        --blue: #79b8ff;
+        --amber: #ffc66d;
+        --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-width: 320px;
+        background:
+          radial-gradient(ellipse at 48% -15%, rgb(33 79 87 / 26%), transparent 48%),
+          var(--bg);
+      }
+
+      button, input { font: inherit; }
+      button:focus-visible, input:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 3px;
+      }
+
+      .shell { max-width: 1120px; margin: 0 auto; padding: 0 30px 60px; }
+      header {
+        height: 74px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid rgb(141 155 171 / 15%);
+      }
+      .brand { display: flex; align-items: center; gap: 11px; font-weight: 650; letter-spacing: -.02em; }
+      .brand-mark {
+        width: 30px; height: 30px; display: grid; place-items: center;
+        border: 1px solid rgb(100 230 177 / 35%); border-radius: 9px;
+        color: var(--green); background: rgb(100 230 177 / 8%);
+      }
+      .brand-mark svg { width: 17px; height: 17px; }
+      .header-right, .live { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
+      .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgb(100 230 177 / 55%); }
+
+      main { padding-top: 49px; }
+      .eyebrow {
+        display: flex; align-items: center; gap: 9px; color: var(--green);
+        font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+      }
+      .eyebrow-line { width: 22px; height: 1px; background: var(--green); }
+      h1 { margin: 16px 0 10px; font-size: clamp(32px, 5vw, 48px); line-height: 1.08; letter-spacing: -.055em; font-weight: 620; }
+      .intro { max-width: 640px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+      .notice {
+        margin-top: 21px; padding: 11px 14px; display: flex; align-items: flex-start; gap: 10px;
+        color: #b7c3ce; background: rgb(121 184 255 / 5%); border: 1px solid rgb(121 184 255 / 15%);
+        border-radius: 8px; font-size: 12px; line-height: 1.6;
+      }
+      .notice strong { color: #dce8f3; font-weight: 600; }
+      .notice-icon { color: var(--blue); font-family: var(--mono); }
+
+      .workspace { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(300px, .82fr); gap: 16px; margin-top: 29px; }
+      .card { min-width: 0; background: linear-gradient(160deg, rgb(21 31 43 / 88%), rgb(15 22 31 / 94%)); border: 1px solid var(--border); border-radius: 12px; }
+      .card-head { min-height: 61px; padding: 0 19px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgb(141 155 171 / 12%); }
+      .card-title { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+      .card-kicker { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+      .workspace-body { padding: 19px; }
+      .endpoint { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }
+      .endpoint-address { display: inline-flex; align-items: center; gap: 7px; color: #c6d0da; font-family: var(--mono); font-size: 11px; }
+      .endpoint-address svg { color: var(--green); }
+
+      .flow { display: grid; grid-template-columns: 1fr 54px 1fr; align-items: center; margin: 26px 0 22px; }
+      .peer { display: grid; justify-items: center; gap: 9px; color: var(--muted); font-size: 11px; }
+      .peer-box { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--border); background: #101822; color: var(--blue); }
+      .peer-box.server { color: var(--green); }
+      .peer-box svg { width: 20px; height: 20px; }
+      .flow-mid { display: grid; justify-items: center; gap: 8px; color: #556474; }
+      .flow-arrow { width: 100%; display: flex; align-items: center; }
+      .flow-arrow::before { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, #415466, var(--green)); }
+      .flow-arrow::after { content: ""; width: 6px; height: 6px; border-top: 1px solid var(--green); border-right: 1px solid var(--green); transform: rotate(45deg); margin-left: -5px; }
+      .flow-label { font-family: var(--mono); font-size: 9px; white-space: nowrap; }
+
+      label { display: block; margin-bottom: 8px; color: #c8d1da; font-size: 11px; font-weight: 550; }
+      .message-row { display: flex; gap: 9px; }
+      .message-row input {
+        flex: 1; min-width: 0; height: 42px; padding: 0 12px; color: var(--text);
+        background: #0c131b; border: 1px solid #2a3847; border-radius: 7px; font-size: 12px;
+      }
+      .message-row input::placeholder { color: #657587; }
+      .message-row input:disabled { opacity: .6; }
+      .primary, .secondary {
+        min-height: 40px; padding: 0 14px; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 650;
+        transition: background .16s ease, border-color .16s ease, transform .16s ease;
+      }
+      .primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: #08130f; border: 1px solid var(--green); background: var(--green); }
+      .primary:hover:not(:disabled) { background: #82f2c4; transform: translateY(-1px); }
+      .primary:disabled { cursor: progress; opacity: .62; }
+      .primary svg { width: 14px; height: 14px; }
+      .secondary { color: #b6c2ce; border: 1px solid #344353; background: #17212c; }
+      .secondary:hover:not(:disabled) { border-color: #607387; background: #1c2936; }
+      .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .helper { margin: 11px 0 0; color: #728193; font-size: 10px; line-height: 1.55; }
+
+      .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin-top: 17px; }
+      .stat { padding: 11px 12px; background: rgb(11 16 23 / 55%); border: 1px solid rgb(141 155 171 / 12%); border-radius: 8px; }
+      .stat-label { color: var(--muted); font-size: 10px; }
+      .stat-value { margin-top: 6px; color: var(--text); font-family: var(--mono); font-size: 13px; }
+      .state { display: inline-flex; align-items: center; gap: 6px; color: var(--green); }
+      .state-dot { width: 6px; height: 6px; background: currentColor; border-radius: 50%; }
+
+      .session-card { display: flex; flex-direction: column; min-height: 100%; }
+      .session-body { flex: 1; padding: 17px 19px; }
+      .session-summary { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid rgb(141 155 171 / 12%); }
+      .session-label { color: var(--muted); font-size: 11px; }
+      .session-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid rgb(141 155 171 / 20%); border-radius: 20px; color: #9eacba; font-family: var(--mono); font-size: 9px; letter-spacing: .04em; }
+      .session-badge.active { color: var(--green); border-color: rgb(100 230 177 / 30%); background: rgb(100 230 177 / 6%); }
+      .timeline { position: relative; display: grid; gap: 0; padding: 14px 0 4px; }
+      .timeline::before { content: ""; position: absolute; top: 24px; bottom: 17px; left: 9px; width: 1px; background: #2e3b48; }
+      .step { position: relative; display: grid; grid-template-columns: 19px 1fr auto; align-items: start; gap: 9px; min-height: 48px; color: #69798a; }
+      .step-marker { z-index: 1; width: 19px; height: 19px; display: grid; place-items: center; color: #748497; background: #17212c; border: 1px solid #334353; border-radius: 50%; font-family: var(--mono); font-size: 9px; }
+      .step.done { color: var(--text); }
+      .step.done .step-marker { color: var(--green); border-color: rgb(100 230 177 / 50%); background: #14251f; }
+      .step.current .step-marker { color: var(--amber); border-color: rgb(255 198 109 / 60%); background: #2a2419; }
+      .step-name { padding-top: 3px; font-size: 10px; line-height: 1.4; }
+      .step-detail { padding-top: 4px; color: #748497; font-size: 9px; line-height: 1.4; }
+      .step-tag { padding-top: 4px; color: #647487; font-family: var(--mono); font-size: 8px; text-align: right; white-space: nowrap; }
+      .step.done .step-tag { color: #8aa194; }
+      .session-foot { padding: 12px 19px; color: var(--muted); border-top: 1px solid rgb(141 155 171 / 12%); font-size: 10px; line-height: 1.5; }
+
+      .bottom-grid { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(300px, .82fr); gap: 16px; margin-top: 16px; }
+      .result-card, .log-card { min-height: 173px; }
+      .result-content { min-height: 111px; display: grid; place-items: center; padding: 20px; color: #708093; font-size: 11px; text-align: center; }
+      .result-content.has-result { display: block; color: var(--text); text-align: left; }
+      .result-empty { display: grid; justify-items: center; gap: 8px; }
+      .result-empty svg { width: 21px; height: 21px; color: #637489; }
+      .result-message { padding: 11px 12px; overflow-wrap: anywhere; border: 1px solid rgb(141 155 171 / 12%); border-radius: 7px; background: #0c131b; font-family: var(--mono); font-size: 11px; }
+      .result-meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+      .chip { padding: 5px 7px; color: #a9bac8; background: #17212c; border: 1px solid #293847; border-radius: 5px; font-family: var(--mono); font-size: 9px; }
+      .chip.good { color: var(--green); border-color: rgb(100 230 177 / 25%); }
+      .log-list { display: grid; gap: 9px; padding: 14px 17px; font-family: var(--mono); font-size: 9px; }
+      .log-line { display: grid; grid-template-columns: 48px 1fr; gap: 8px; color: #a2b0bd; overflow-wrap: anywhere; }
+      .log-time { color: #647487; }
+      .log-empty { color: #708093; font-family: inherit; font-size: 10px; }
+      footer { margin-top: 22px; color: #657486; font-size: 10px; line-height: 1.6; text-align: center; }
+      footer code { color: #91a2b1; font-family: var(--mono); font-size: 9px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+      @media (max-width: 760px) {
+        .shell { padding: 0 18px 40px; }
+        main { padding-top: 35px; }
+        .workspace, .bottom-grid { grid-template-columns: 1fr; }
+        .session-card { min-height: initial; }
+      }
+      @media (max-width: 450px) {
+        .shell { padding-right: 13px; padding-left: 13px; }
+        .header-right { font-size: 10px; }
+        .workspace-body { padding: 15px; }
+        .message-row { flex-direction: column; }
+        .message-row .primary { min-height: 42px; }
+        .step-tag { font-size: 7px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M7.5 10V7.5a4.5 4.5 0 0 1 9 0V10m-11 0h13v10h-13V10Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 14v2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </div>
+          <span>TLS Lab</span>
+        </div>
+        <div class="header-right"><span class="live-dot"></span><span id="server-status">Checking local server</span><span>·</span><span>TLS 1.3</span></div>
+      </header>
+
+      <main>
+        <div class="eyebrow"><span class="eyebrow-line"></span> Session layer playground</div>
+        <h1>Handshake. Then handshake<br>faster.</h1>
+        <p class="intro">See a real TLS 1.3 connection come alive, then watch the next one reuse its session ticket. Send a message, inspect the lifecycle, and see what session resumption changes.</p>
+        <div class="notice" role="note">
+          <span class="notice-icon" aria-hidden="true">i</span>
+          <span><strong>What this demo shows:</strong> real TLS 1.3 connections and ticket-based resumption through Python/OpenSSL. Handshake messages and key material stay inside the TLS library; this UI is a lifecycle view, not a packet capture.</span>
+        </div>
+
+        <section class="workspace" aria-label="TLS connection playground">
+          <article class="card">
+            <div class="card-head"><span class="card-title">Connection playground</span><span class="card-kicker">Local loopback</span></div>
+            <div class="workspace-body">
+              <div class="endpoint"><span>Secure echo endpoint</span><span class="endpoint-address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7.5 10V7.5a4.5 4.5 0 0 1 9 0V10m-11 0h13v10h-13V10Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>localhost · TLS 1.3</span></div>
+              <div class="flow" aria-label="Client sends a protected message to the TLS server">
+                <div class="peer"><div class="peer-box"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 21h8m-4-4v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div><span>Client</span></div>
+                <div class="flow-mid"><span class="flow-label">ENCRYPTED</span><span class="flow-arrow"></span><span class="flow-label">APP DATA</span></div>
+                <div class="peer"><div class="peer-box server"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="8" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="13" width="16" height="8" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 7h.01M8 17h.01m3-10h5m-5 10h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div><span>TLS server</span></div>
+              </div>
+              <form id="connect-form">
+                <label for="message">Message to echo</label>
+                <div class="message-row">
+                  <input id="message" name="message" type="text" maxlength="4000" value="Hello, TLS 1.3!" autocomplete="off" required>
+                  <button class="primary" id="connect-button" type="submit"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h13m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Connect</span></button>
+                </div>
+                <div class="controls">
+                  <button class="secondary" id="run-twice" type="button">Run full demo <span aria-hidden="true">↗</span></button>
+                  <button class="secondary" id="reset-session" type="button">Clear session ticket</button>
+                </div>
+                <p class="helper">Run full demo sends two messages over separate connections. The second connection attempts to resume the first session.</p>
+              </form>
+              <div class="stats" aria-label="Connection statistics">
+                <div class="stat"><div class="stat-label">Connections</div><div class="stat-value" id="connection-count">0</div></div>
+                <div class="stat"><div class="stat-label">Resumed</div><div class="stat-value" id="resumed-count">0</div></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card session-card">
+            <div class="card-head"><span class="card-title">Session lifecycle</span><span class="card-kicker">Live trace</span></div>
+            <div class="session-body">
+              <div class="session-summary"><span class="session-label">Current connection</span><span class="session-badge" id="session-badge"><span class="state-dot"></span><span id="session-status">IDLE</span></span></div>
+              <div class="timeline" id="timeline" aria-label="TLS handshake overview">
+                <div class="step" data-step="0"><span class="step-marker">1</span><div><div class="step-name">ClientHello &amp; negotiation</div><div class="step-detail">Version, cipher suite, key share</div></div><span class="step-tag">WAITING</span></div>
+                <div class="step" data-step="1"><span class="step-marker">2</span><div><div class="step-name">Server authentication</div><div class="step-detail">Certificate verified by TLS library</div></div><span class="step-tag">WAITING</span></div>
+                <div class="step" data-step="2"><span class="step-marker">3</span><div><div class="step-name">Handshake complete</div><div class="step-detail">OpenSSL reports TLS session ready</div></div><span class="step-tag">WAITING</span></div>
+                <div class="step" data-step="3"><span class="step-marker">4</span><div><div class="step-name">Protected application data</div><div class="step-detail">Encrypted echo round-trip</div></div><span class="step-tag">WAITING</span></div>
+                <div class="step" data-step="4"><span class="step-marker">5</span><div><div class="step-name">Graceful shutdown</div><div class="step-detail">TLS close_notify exchange</div></div><span class="step-tag">WAITING</span></div>
+              </div>
+            </div>
+            <div class="session-foot" id="session-foot">Start a connection to see the lifecycle trace. No session secrets are shown.</div>
+          </article>
+        </section>
+
+        <section class="bottom-grid" aria-label="Connection results">
+          <article class="card result-card">
+            <div class="card-head"><span class="card-title">Latest response</span><span class="card-kicker" id="response-label">Awaiting connection</span></div>
+            <div class="result-content" id="result-content" aria-live="polite">
+              <div class="result-empty"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v11H8l-3 3V5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 9h8m-8 3h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Your server response will appear here.</span></div>
+            </div>
+          </article>
+          <article class="card log-card">
+            <div class="card-head"><span class="card-title">Event log</span><span class="card-kicker">This tab only</span></div>
+            <div class="log-list" id="event-log" aria-live="polite"><div class="log-empty">Waiting for the first connection…</div></div>
+          </article>
+        </section>
+
+        <footer>Educational demo · Local connections only · TLS handled by Python <code>ssl</code> / OpenSSL · No 0-RTT</footer>
+      </main>
+    </div>
+    <div class="sr-only" id="announcer" aria-live="assertive"></div>
+    <script>
+      const form = document.querySelector("#connect-form");
+      const messageInput = document.querySelector("#message");
+      const connectButton = document.querySelector("#connect-button");
+      const runTwiceButton = document.querySelector("#run-twice");
+      const resetButton = document.querySelector("#reset-session");
+      const statusBadge = document.querySelector("#session-badge");
+      const statusText = document.querySelector("#session-status");
+      const sessionFoot = document.querySelector("#session-foot");
+      const eventLog = document.querySelector("#event-log");
+      const resultContent = document.querySelector("#result-content");
+      const steps = [...document.querySelectorAll(".step")];
+      let busy = false;
+      let logCount = 0;
+
+      function setBusy(value) {
+        busy = value;
+        connectButton.disabled = value;
+        runTwiceButton.disabled = value;
+        resetButton.disabled = value;
+        messageInput.disabled = value;
+        connectButton.querySelector("span").textContent = value ? "Connecting…" : "Connect";
+      }
+
+      function setStatus(value, active = false) {
+        statusText.textContent = value;
+        statusBadge.classList.toggle("active", active);
+      }
+
+      function updateSteps(completed, current = -1, resumed = false) {
+        const authenticationStep = steps[1];
+        authenticationStep.querySelector(".step-name").textContent = resumed
+          ? "PSK ticket accepted"
+          : "Server authentication";
+        authenticationStep.querySelector(".step-detail").textContent = resumed
+          ? "Session authenticated by TLS library"
+          : "Certificate verified by TLS library";
+        steps.forEach((step, index) => {
+          const done = index < completed;
+          step.classList.toggle("done", done);
+          step.classList.toggle("current", index === current);
+          step.querySelector(".step-tag").textContent = done ? "COMPLETE" : index === current ? "IN PROGRESS" : "WAITING";
+        });
+      }
+
+      function addLog(message, tone = "") {
+        const empty = eventLog.querySelector(".log-empty");
+        if (empty) empty.remove();
+        const line = document.createElement("div");
+        line.className = "log-line";
+        const time = document.createElement("span");
+        time.className = "log-time";
+        time.textContent = new Date().toLocaleTimeString([], { hour12: false });
+        const text = document.createElement("span");
+        text.textContent = message;
+        if (tone) text.style.color = tone;
+        line.append(time, text);
+        eventLog.prepend(line);
+        logCount += 1;
+        while (eventLog.children.length > 10) eventLog.lastElementChild.remove();
+      }
+
+      function renderResult(result) {
+        resultContent.classList.add("has-result");
+        resultContent.replaceChildren();
+        const message = document.createElement("div");
+        message.className = "result-message";
+        message.textContent = result.response;
+        const meta = document.createElement("div");
+        meta.className = "result-meta";
+        const values = [
+          [result.protocol, ""],
+          [result.cipher, ""],
+          [result.resumed ? "Session resumed" : "Full handshake", result.resumed ? "good" : ""],
+          [result.ticket_cached ? "Ticket cached" : "No ticket", result.ticket_cached ? "good" : ""],
+        ];
+        for (const [label, className] of values) {
+          const chip = document.createElement("span");
+          chip.className = `chip ${className}`;
+          chip.textContent = label;
+          meta.append(chip);
+        }
+        resultContent.append(message, meta);
+        document.querySelector("#response-label").textContent = result.resumed ? "Resumed connection" : "New connection";
+      }
+
+      async function sendMessage(message) {
+        setBusy(true);
+        updateSteps(0, 0);
+        setStatus("HANDSHAKING");
+        sessionFoot.textContent = "Negotiating a TLS 1.3 connection…";
+        addLog("Opening a TLS 1.3 connection");
+        try {
+          const response = await fetch("/api/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Connection failed");
+
+          updateSteps(3, -1, result.resumed);
+          setStatus(result.resumed ? "RESUMED" : "ESTABLISHED", true);
+          for (const event of result.events) addLog(event);
+          addLog(`${result.protocol} · ${result.cipher}`, "#79b8ff");
+          updateSteps(4, -1, result.resumed);
+          renderResult(result);
+          updateStats();
+          setStatus("TERMINATED", true);
+          updateSteps(5, -1, result.resumed);
+          sessionFoot.textContent = result.resumed
+            ? "Session ticket accepted. OpenSSL completed a resumed TLS 1.3 handshake."
+            : result.ticket_cached
+              ? "Full handshake complete. A session ticket is ready for a future connection."
+              : "Connection complete. The TLS provider did not expose a reusable ticket.";
+          document.querySelector("#announcer").textContent = result.resumed ? "TLS session resumed successfully" : "TLS handshake completed";
+          return result;
+        } catch (error) {
+          updateSteps(0, -1);
+          setStatus("ERROR");
+          sessionFoot.textContent = error.message;
+          addLog(`Connection failed: ${error.message}`, "#ff8585");
+          document.querySelector("#announcer").textContent = `Connection failed: ${error.message}`;
+          throw error;
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function updateStats() {
+        try {
+          const response = await fetch("/api/status", { cache: "no-store" });
+          if (!response.ok) return;
+          const stats = await response.json();
+          document.querySelector("#connection-count").textContent = stats.requests;
+          document.querySelector("#resumed-count").textContent = stats.resumed;
+        } catch { /* Status refresh is supplementary to the connection result. */ }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (busy) return;
+        try { await sendMessage(messageInput.value); } catch { /* Error is shown in the app. */ }
+      });
+
+      runTwiceButton.addEventListener("click", async () => {
+        if (busy) return;
+        try {
+          await sendMessage(messageInput.value);
+          await sendMessage("Second connection — resumption attempt");
+        } catch { /* Error is shown in the app. */ }
+      });
+
+      resetButton.addEventListener("click", async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+          const response = await fetch("/api/reset", { method: "POST" });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Could not clear session");
+          updateSteps(0);
+          setStatus("IDLE");
+          resultContent.classList.remove("has-result");
+          resultContent.replaceChildren();
+          const empty = document.createElement("div");
+          empty.className = "result-empty";
+          empty.textContent = "Your server response will appear here.";
+          resultContent.append(empty);
+          document.querySelector("#response-label").textContent = "Awaiting connection";
+          sessionFoot.textContent = "Client session ticket cleared. The next connection will perform a full handshake.";
+          addLog("Client session ticket cleared");
+          await updateStats();
+        } catch (error) {
+          addLog(`Could not clear session: ${error.message}`, "#ff8585");
+        } finally {
+          setBusy(false);
+        }
+      });
+
+      fetch("/api/status", { cache: "no-store" })
+        .then((response) => {
+          if (!response.ok) throw new Error("Local server unavailable");
+          return response.json();
+        })
+        .then((status) => {
+          document.querySelector("#server-status").textContent = status.ready ? "Local server ready" : "Server unavailable";
+          document.querySelector("#connection-count").textContent = status.requests;
+          document.querySelector("#resumed-count").textContent = status.resumed;
+        })
+        .catch(() => {
+          document.querySelector("#server-status").textContent = "Local server unavailable";
+          addLog("Could not reach the local demo server", "#ff8585");
+        });
+    </script>
+  </body>
+</html>
